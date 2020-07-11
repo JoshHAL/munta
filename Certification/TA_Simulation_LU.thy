@@ -288,11 +288,107 @@ qed
 lemma Lemma10_ii:
   assumes "u \<in> \<lbrakk>lu_apx l D\<rbrakk>"
   and "u (v' i) \<le> min (U l (v' i)) (L l (v' i))"
-shows "(Le (- u (v' i))) \<prec> (D 0 i)"
-  sorry
+  and "i \<le> n"
+  and "i > 0"
+  and "u (v' i) \<le> min (U l (v' i)) (L l (v' i))"
+  and "vabstr' Z D"
+shows "(Le (- u (v' i))) \<le> (D 0 i)"
+proof -
+let ?x = "v' i"
+  let ?U = "(U l ?x)"
+  have clock_num:"v ?x = i"
+    using assms clock_numbering(2) v_v' by auto
+  hence x_i_less_n: "v ?x \<le> n" using assms by argo
+  have \<star>:"dbm_entry_val u None (Some ?x) (lu_apx l D 0 i)"
+      using assms(1) 
+      unfolding DBM_zone_repr_def DBM_val_bounded_def
+      using x_i_less_n clock_num
+      by fastforce
+  have lu_start:"lu_apx l D 0 i = norm_lower (norm_upper (D 0 i) 0) (- ?U)"
+      unfolding lu_apx_def extra_lu_def Let_def
+      using assms
+      by auto
+  consider (lt) "D 0 i < Lt (- ?U)" | (ge) "D 0 i \<ge> Lt (- ?U)"
+    by fastforce
+  then show ?thesis
+  proof cases
+    case lt
+    have notinf:"D 0 i \<noteq> DBM.INF" using lt by fastforce
+    
+    
+    have \<box>:"Le (- u ?x) \<le> lu_apx l D 0 i"
+      using notinf \<star>
+      by(cases "lu_apx l D 0 i"; fastforce+)
 
-lemma Theorem_Bouyer: assumes Hyp:"vabstr' Z M"
-  assumes "M_lu = lu_apx l M"
+    have "u ?x > ?U"
+    proof(cases "Le 0 \<prec> D 0 i")
+      case True
+      have "dbm_nonneg n D" using assms(6)
+        unfolding canonical_dbm_def
+        by simp
+      hence "D 0 i \<le> 0"
+        unfolding dbm_nonneg_def
+        using assms(3-4)
+        by blast
+      hence "D 0 i \<prec> Le 0 \<or> D 0 i = Le 0"
+        using less_eq neutral
+          by (simp add: less_eq neutral; fastforce)
+      hence "False" using True by fastforce
+      then show ?thesis by simp
+    next
+      case False
+      hence "lu_apx l D 0 i = norm_lower (D 0 i) (- ?U)"
+        using lu_start
+        by fastforce
+      hence "lu_apx l D 0 i = Lt (- ?U)" using lt
+        by (simp add: less)
+      hence "Le (- u ?x) \<le> Lt (- ?U)" using \<box>
+        by presburger
+      hence "u ?x > ?U"
+        by fastforce
+      then show ?thesis by simp
+    qed
+    hence "False" using assms by linarith
+    then show ?thesis by simp
+  next
+    case ge
+    hence **:"\<not> (D 0 i) \<prec> Lt (- ?U)"
+      by (simp add: less_eq)
+    then show ?thesis
+    proof(cases "Le 0 \<prec> D 0 i")
+      case True
+      have "dbm_nonneg n D" using assms(6)
+        unfolding canonical_dbm_def
+        by simp
+      hence "D 0 i \<le> 0"
+        unfolding dbm_nonneg_def
+        using assms(3-4)
+        by blast
+      hence "D 0 i \<prec> Le 0 \<or> D 0 i = Le 0"
+        using less_eq neutral
+          by (simp add: less_eq neutral; fastforce)
+      hence "False" using True by fastforce
+      then show ?thesis by simp
+    next
+      case False
+      hence "lu_apx l D 0 i = norm_lower (D 0 i) (- ?U)"
+        using False lu_start
+        by fastforce
+      hence "lu_apx l D 0 i = D 0 i" using ** lu_start
+        by force
+      hence "dbm_entry_val u None (Some ?x) (D 0 i)"
+        using \<star> 
+        by argo
+      hence "Le (- u ?x) \<le> D 0 i"
+        by (cases "D 0 i"; force+)
+      then show ?thesis by simp
+    qed
+  qed
+qed
+
+lemma Theorem_Bouyer: 
+  assumes Hyp:"vabstr' Z M"
+  and "M_lu = lu_apx l M"
   shows 
     "\<lbrakk>M_lu\<rbrakk> \<subseteq> local.abs l Z"
 proof
