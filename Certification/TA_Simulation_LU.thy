@@ -12,6 +12,10 @@ begin
 
 abbreviation zone_of ("\<lbrakk>_\<rbrakk>") where "zone_of M \<equiv> [M]\<^bsub>v,n\<^esub>"
 
+lemma clock_numbering_alt:
+  "\<forall>c. v c \<le> n \<longrightarrow> 0 < v c"
+  using clock_numbering(1) by blast
+
 definition lu_apx where
   "lu_apx l M = extra_lu M (\<lambda>x. real (L l (v' x))) (\<lambda>x. real (U l (v' x))) n"
 
@@ -27,7 +31,10 @@ lemma lt_is_enough:
 lemma norm_lower_pres_ninf:
   assumes "norm_lower e t = DBM.INF"
   shows "e = DBM.INF"
-  using assms by(cases "e \<prec> Lt t"; auto)
+  using assms
+  by(cases "e \<prec> Lt t"; auto)
+  
+  
 
 lemma norm_upper_infinity:
   assumes "norm_upper e t = DBM.INF"
@@ -37,23 +44,25 @@ lemma norm_upper_infinity:
 text\<open>
 This is Lemma 8 from @{cite "BehrmannBLP06"}.\<close>
 
+
+text\<open> How about lu > D j 0\<close>
 lemma Lemma8:
   assumes bounded:"vabstr' Z M"
   and j_le_n: "j \<le> n"
   and j_gt_zero: "j > 0"
   and l_inf:"M j 0 < DBM.INF"
   and eq_inf:"(lu_apx l M) j 0 = DBM.INF"
-shows "\<not> (lt_as_bound (M j 0) (L l (v' j))) "
+shows "dbm_entry_bound (M j 0) > L l (v' j)"
 proof -
   let ?x = "v' j"
   and ?M_lu = "(lu_apx l M)"
   have "?M_lu j 0 = norm_lower (norm_upper (M j 0) (real (L l ?x))) 0"
     unfolding lu_apx_def extra_lu_def Let_def
     by (simp add: j_le_n j_gt_zero)  
-  hence "DBM.INF = norm_lower (norm_upper (M j 0) (real (L l ?x))) 0"
+  hence "norm_lower (norm_upper (M j 0) (real (L l ?x))) 0 = DBM.INF"
     using eq_inf by simp
   hence "norm_upper (M j 0) (real (L l ?x)) = DBM.INF" 
-    using norm_lower_pres_ninf[of "(norm_upper (M j 0) (real (L l ?x)))" "0"]
+    using norm_lower_pres_ninf[of "norm_upper (M j 0) (real (L l ?x))" "0"]
     by simp
   hence le:"Le (L l ?x) \<prec> M j 0"
     using norm_upper_infinity[of "(M j 0)" "(real (L l ?x))"] by fast
@@ -61,7 +70,7 @@ proof -
     using linordered_monoid.dual_order.strict_trans by blast
   show  ?thesis using l_inf le lt
       by (cases "M j 0"; auto+)
-qed
+  qed
 
 
 text\<open> Lemma 9 from the Paper\<close>
@@ -70,11 +79,12 @@ lemma Lemma9:
   and i_le_n:"i \<le> n"
   and i_gt_zero: "0 < i"
   and "M 0 i \<noteq> (lu_apx l M) 0 i"
-shows "lt_as_bound (M 0 i) (- U l (v' i))"
+shows "lt_as_bound (M 0 i) (- U l (v' i)) 
+    \<and> lu_apx l M 0 i = Lt (- (U l (v' i)))"
 proof -
   let ?x = "v' i"
   have base:"(lu_apx l M) 0 i = norm_lower (norm_upper (M 0 i) 0) 
-                               (- (real  (U l ?x)))"
+                               (- (U l ?x))"
     unfolding lu_apx_def extra_lu_def Let_def
     using i_le_n i_gt_zero
     by force
@@ -91,23 +101,29 @@ proof -
   next
     case (Lt x2)
     hence \<star>:"Lt x2 = norm_lower (norm_upper (M 0 i) 0) 
-                               (- (real  (U l ?x)))"
+                               (- (U l ?x))"
       using base by simp
     hence
-      \<box>:"x2 = (- (real  (U l ?x))) \<and> M 0 i \<prec> Lt x2 
+      \<box>:"x2 = (- (U l ?x)) \<and> M 0 i \<prec> Lt x2 
          \<or> Lt x2 = M 0 i"
       by auto
     consider 
-     (up) "x2 = (- (real  (U l ?x)))\<and> M 0 i \<prec> Lt x2" 
+     (up) "x2 = (- (U l ?x)) \<and> M 0 i \<prec> Lt x2" 
    | (eq) "Lt x2 = M 0 i"
       using \<box> \<star>
       by force
     then show ?thesis
     proof cases
       case up
-      hence "M 0 i \<prec> Lt (- (real  (U l ?x)))" 
+      hence "M 0 i \<prec> Lt (- (U l ?x))" 
         by blast
-      thus ?thesis using lt_is_enough
+      hence and1:"lt_as_bound (M 0 i) (- U l (v' i))"
+        using lt_is_enough
+        by auto
+      have "Lt x2 = Lt (- (U l (v' i)))"
+        using up
+        by blast
+      thus ?thesis using and1 Lt
         by auto
     next
       case eq
@@ -236,7 +252,6 @@ proof -
 qed
 
 
-
 lemma Lemma10_ii:
   assumes "u \<in> \<lbrakk>lu_apx l D\<rbrakk>"
   and "u (v' i) \<le> min (U l (v' i)) (L l (v' i))"
@@ -335,13 +350,49 @@ let ?x = "v' i"
   qed
 qed
 
-
+lemma case_zone_repr_empty:
+  assumes "vabstr' {} M"
+  shows "\<lbrakk>lu_apx l M\<rbrakk> = {}"
+proof(rule ccontr)
+  assume contr_assms:"\<lbrakk>lu_apx l M\<rbrakk> \<noteq> {}"
+  have M_canonical:
+    "canonical M n" 
+    using assms
+    unfolding canonical_dbm_def 
+    by blast
+  have neg_diag:"\<exists>i \<le> n. M i i < 0" 
+    using clock_numbering(2) clock_numbering_alt assms
+        M_canonical
+        X_is_clk_set
+        canonical_empty_zone[of n v M]
+    by blast
+  obtain i where i_le_n:"i\<le> n" and D_ii_neg:"M i i < 0"
+    using neg_diag by blast
+  have "lu_apx l M i i = norm_diag (M i i)"
+    unfolding lu_apx_def extra_lu_def
+    using i_le_n
+    by presburger
+  hence "lu_apx l M i i = Lt 0"
+    unfolding norm_diag_def
+    using D_ii_neg less
+    by (simp add: less neutral)
+  hence "lu_apx l M i i < 0"
+    by (simp add: neutral)
+  hence "\<exists> i \<le> n. lu_apx l M i i < 0"
+    using i_le_n
+    by blast
+  hence "\<lbrakk>lu_apx l M\<rbrakk> = {}"
+    using negative_diag_empty[of "lu_apx l M"]
+    by argo
+  thus "False"  using contr_assms
+    by blast
+qed
 
 text\<open>Context for constructing a DBM out of u \<in> \<lbrakk>lu_apx l D\<rbrakk>
     and a set P_u = {u' \<in> \<lbrakk>D\<rbrakk>. sim (l,u) (l,u')} s.t. 
     1. \<lbrakk>abs_dbm D\<rbrakk> \<subseteq> P_u 
     2. \<lbrakk>abs_dbm D\<rbrakk> \<noteq> \<emptyset>
-    Thereby achieving P_u \<noteq> \<emptyset> i.e. \<close>
+    Thereby achieving P_u \<noteq> \<emptyset> i.e.  \<close>
 
 context
   fixes l::'l
@@ -349,8 +400,51 @@ context
   fixes D::"real DBM"
   fixes Z
   assumes vabs:"vabstr' Z D"
+  and D_zone_repr_non_empty: "Z \<noteq> {}"
   and u_apx:"u \<in> \<lbrakk>lu_apx l D\<rbrakk>"
 begin
+
+lemma D_zone_repr_non_empty_alt:
+  "\<lbrakk>D\<rbrakk> \<noteq> {}"
+  using vabs D_zone_repr_non_empty
+  by blast
+
+lemma u_dbm_entry_val:
+  assumes "j \<le> n" and "0 < j"
+  shows "dbm_entry_val u None (Some (v' j)) (lu_apx l D 0 j)"
+        "dbm_entry_val u (Some (v' j)) None (lu_apx l D j 0)"
+  subgoal
+  proof -
+  have id_v_v':"v (v' j) = j" using clock_numbering assms v_v'
+    by auto
+  hence "v (v' j) \<le> n" using assms
+    by argo
+  hence "dbm_entry_val u None (Some (v' j)) (lu_apx l D 0 (v (v' j)))"
+    using u_apx unfolding DBM_zone_repr_def DBM_val_bounded_def
+    by fast
+  thus ?thesis using id_v_v'
+    by argo
+qed
+proof -
+  have id_v_v':"v (v' j) = j" using clock_numbering assms v_v'
+    by auto
+  hence "v (v' j) \<le> n" using assms
+    by argo
+  hence "dbm_entry_val u (Some (v' j)) None (lu_apx l D (v (v' j)) 0)"
+    using u_apx unfolding DBM_zone_repr_def DBM_val_bounded_def
+    by fast
+  thus "dbm_entry_val u (Some (v' j)) None (lu_apx l D j 0)" using id_v_v'
+    by argo
+qed
+
+lemma D_canonical_dbm:
+   "canonical_dbm D" 
+  using vabs
+  by blast
+
+lemma D_canonical: "canonical D n"
+  using D_canonical_dbm unfolding canonical_dbm_def
+  by argo
 
 definition u_i
   where "u_i i \<equiv> u (v' i)"
@@ -387,6 +481,8 @@ definition abs_dbm :: "real DBM \<Rightarrow> real DBM"
       else if i = 0 \<and> j \<le> n then abs_col j (M i j)
       else M i j"
 
+definition P_dbm
+  where "P_dbm \<equiv> abs_dbm D"
 
 abbreviation P_u
   where
@@ -613,6 +709,8 @@ proof -
 qed
 
 
+  
+
 lemma abs_subset_input:
   "\<lbrakk>abs_dbm D\<rbrakk> \<subseteq> \<lbrakk>D\<rbrakk>"
 proof
@@ -623,7 +721,7 @@ proof
     by blast
   thus "x \<in> \<lbrakk>D\<rbrakk>" unfolding DBM_zone_repr_def by fast
 qed
-
+  
 
 lemma fst_sim:
   assumes "u' \<in> \<lbrakk>abs_dbm D\<rbrakk>"
@@ -785,9 +883,804 @@ lemma abs_dbm_repr_P_u:
   using abs_subset_input abs_dbm_sim
   by fast
 
+lemma D_cycle_free:
+  "cycle_free D n"
+  using D_zone_repr_non_empty_alt clock_numbering(2) non_empty_cycle_free
+  by fast
+
+lemma abs_dbm_not_cyc_free:
+  assumes "\<lbrakk>abs_dbm D\<rbrakk> = {}"
+  shows "\<not> cyc_free (abs_dbm D) n"
+  using assms clock_numbering_alt empty_not_cyc_free
+  by blast
+
+
+lemma D_cyc_free:
+  "cyc_free D n"
+  using D_cycle_free cycle_free_diag_equiv
+  by blast
+
+
+lemma abs_dbm_nearly_cyc_free:
+"set ys \<subseteq> {1..n} \<and> i \<in> {1..n} \<and> j \<in> {1..n}\<longrightarrow> 
+      len (abs_dbm D) i j ys = len D i j ys"
+proof(induction ys arbitrary: i j)
+  case Nil
+  have "set [] \<subseteq> {1..n} \<and> i \<in> {1..n} \<and> j \<in> {1..n}  \<longrightarrow> 
+      len (abs_dbm D) i j [] = len D i j []"
+  proof
+    assume "set [] \<subseteq> {1..n} \<and> i \<in> {1..n} \<and> j \<in> {1..n}"
+    hence \<box>:"0 < i \<and> i \<le> n \<and> 0 < j \<and> j \<le> n"
+      by auto
+    have "len (abs_dbm D) i j [] = abs_dbm D i j"
+      by simp
+    hence "len (abs_dbm D) i j [] = D i j"
+      unfolding abs_dbm_def using \<box>
+      by simp
+    thus "len (abs_dbm D) i j [] = len D i j []"
+      by fastforce
+    qed
+  then show ?case
+    by fast
+next
+  case (Cons a xs)
+  have "set (a#xs) \<subseteq> {1..n} \<and> i \<in> {1..n} \<and> j \<in> {1..n} \<longrightarrow> 
+        len (abs_dbm D) i j (a#xs) = len D i j (a#xs)"
+  proof
+    assume \<star>:"set (a#xs) \<subseteq> {1..n} \<and> i \<in> {1..n} \<and> j \<in> {1..n}"
+    hence \<box>:"set xs \<subseteq> {1..n} \<and> a \<in> {1..n}"
+      by auto
+    have for_head:"abs_dbm D i a = D i a"
+      using \<box> \<star> unfolding abs_dbm_def
+      by force
+    have "len (abs_dbm D) i j (a#xs) = abs_dbm D i a + len (abs_dbm D) a j xs"
+      by fastforce
+    hence "len (abs_dbm D) i j (a#xs) = D i a + len (abs_dbm D) a j xs"
+      using for_head
+      by argo
+    hence "len (abs_dbm D) i j (a#xs) = D i a + len D a j xs"
+      using \<box> \<star> Cons[of a j]
+      by presburger
+    thus "len (abs_dbm D) i j (a#xs) = len D i j (a#xs)"
+      by simp
+    qed
+    then show ?case by blast
+qed
+
+lemma abs_dbm_len_ge_entry:
+  assumes "set ys \<subseteq> {1..n} \<and> i \<in> {1..n} \<and> j \<in> {1..n}" 
+  shows "len (abs_dbm D) i j ys \<ge> D i j"
+proof -
+  have id:"len (abs_dbm D) i j ys = len D i j ys" 
+    using abs_dbm_nearly_cyc_free[of ys i j] assms 
+    by blast
+  have can_subs:"canonical_subs n {0..n} D"
+    using D_canonical canonical_alt_def by blast
+  have "j \<le> n \<and> i \<le> n" using assms
+    by simp
+  hence "len D i j ys \<ge> D i j" 
+    using assms can_subs
+          canonical_subs_len[of n "{0..n}" D i j ys]
+    by fastforce
+  thus ?thesis using id
+    by argo
+qed
+
+
+
+lemma abs_same_clock_then_u_bigger_ceil_min:
+assumes "j \<le> n"
+  and "0 \<noteq> j"
+  and  "abs_dbm D 0 j + abs_dbm D j 0 < 0"
+shows "u_i j > min (L' j) (U' j)"
+proof(rule ccontr)
+  assume "\<not>(u_i j >  min (L' j)  (U' j))"
+  hence A: "u_i j \<le> min (L' j)  (U' j)"
+    by linarith
+  have \<box>:"abs_dbm D j 0 = Le (u_i j)"
+        unfolding abs_dbm_def using assms
+        unfolding abs_row_def
+        using A
+        by presburger
+  have "abs_dbm D 0 j = Le (- u_i j)"
+        unfolding abs_dbm_def using assms
+        unfolding abs_col_def
+        using A
+        by presburger
+  hence "abs_dbm D 0 j + abs_dbm D j 0 = 0"
+        using \<box>
+        by (simp add: neutral ab_semigroup_add_class.add.commute)
+  thus "False" using assms
+    by auto
+qed
+
+lemma D_zero_clock_ge_zero:
+  "D 0 0 \<ge> 0"
+  using D_cycle_free cycle_free_0_0 by blast
+
+lemma D_through_zero:
+  assumes "j \<le> n"
+  shows "D 0 j + D j 0 \<ge> 0"
+  using assms D_canonical D_zero_clock_ge_zero
+  by force
+
+lemma abs_dbm_same_clock:
+  assumes "j \<le> n"
+  and "0 < j"
+shows "abs_dbm D 0 j + abs_dbm D j 0 \<ge> 0"
+proof(rule ccontr)
+  assume "\<not>(abs_dbm D 0 j + abs_dbm D j 0 \<ge> 0)"
+  hence assm_c:"abs_dbm D 0 j + abs_dbm D j 0 < 0"
+    by auto
+  have not_min:"u_i j >  min (L' j)  (U' j)"
+    using assms assm_c abs_same_clock_then_u_bigger_ceil_min
+    by blast
+  consider
+    (middle) "L' j < u_i j \<and> u_i j \<le> U' j" |
+    (bigger_U) "u_i j > U' j"
+    using not_min assms
+    by linarith
+  thus "False"
+  proof(cases)
+    case middle
+    hence L_lt_u:"L' j < u_i j"
+      by simp
+    have b1:"abs_dbm D j 0 = dmin (Le (u_i j)) (D j 0)"
+        unfolding abs_dbm_def
+        using assms
+        unfolding abs_row_def
+        using middle by auto
+    hence b2:"abs_dbm D 0 j = dmin (D 0 j) (Lt (- L' j))"
+        unfolding abs_dbm_def
+        using assms
+        unfolding abs_col_def
+        using L_lt_u
+        by fastforce
+      have not_both_bigger_D:
+        "\<not>(Lt (- L' j) \<ge> D 0 j \<and> Le (u_i j) \<ge> D j 0)"
+      proof(rule notI)
+        assume "Lt (- L' j) \<ge> D 0 j \<and> Le (u_i j) \<ge> D j 0"
+        hence "abs_dbm D 0 j + abs_dbm D j 0 = D 0 j + D j 0"
+          using b1 b2
+          by (metis DBM.less_eq dbm_le_def less linorder_not_less)
+        hence "0 \<le> abs_dbm D 0 j + abs_dbm D j 0"
+          using D_through_zero assms(1)
+          by simp
+        thus "False" using assm_c by auto
+      qed
+      have zero_le_u_L:"0 \<le> Le (u_i j) + Lt (- L' j)"
+        by (smt L_lt_u Le_cancel_1 Le_le_LtI add_left_mono neutral)
+      have not_both_smaller_D:
+        "\<not>(Lt (- L' j) \<le>  D 0 j \<and> Le (u_i j) \<le> D j 0)"
+      proof(rule notI)
+        assume "Lt (- L' j) \<le>  D 0 j \<and> Le (u_i j) \<le> D j 0"
+        hence "abs_dbm D 0 j + abs_dbm D j 0 = Lt (- L' j) + Le (u_i j)"
+          using b1 b2
+          by (metis DBM.less_eq dbm_le_def less linorder_not_less)
+        hence "abs_dbm D 0 j + abs_dbm D j 0 \<ge> 0"
+          using zero_le_u_L
+          by (simp add: ab_semigroup_add_class.add.commute)
+        thus "False" using assm_c
+          by auto
+      qed
+      consider
+        (1) "Lt (- L' j) \<ge> D 0 j \<and> Le (u_i j) \<le> D j 0" |
+        (2) "Lt (- L' j) \<le> D 0 j \<and> Le (u_i j) \<ge> D j 0"
+        using not_both_bigger_D  not_both_smaller_D by fastforce
+      then show ?thesis
+      proof(cases)
+        case 1
+        hence A:"abs_dbm D j 0 = Le (u_i j) \<and> abs_dbm D 0 j = D 0 j"
+          using b1 b2 less_eq
+          by (metis dbm_le_def)
+        hence "D 0 j + Le (u_i j) < 0" 
+          using assms assm_c by argo
+        have bounded:"dbm_entry_val u None (Some (v' j)) (lu_apx l D 0 j)"
+         using u_apx 
+         unfolding DBM_zone_repr_def DBM_val_bounded_def u_i_def
+         using assms
+         using clock_numbering(2) v_v' by auto
+        have "D 0 j \<noteq> lu_apx l D 0 j"
+        proof(rule notI)
+          assume eq_lu:"D 0 j = lu_apx l D 0 j"
+          hence "abs_dbm D 0 j = lu_apx l D 0 j"
+            by (simp add: A)
+          hence lu_not_inf:"lu_apx l D 0 j \<noteq> DBM.INF"
+            using assms assm_c
+            by auto
+          hence "Le (- u_i j) \<le> D 0 j"
+          proof(cases "D 0 j")
+            case (Le x1)
+            hence "- u_i j \<le> x1"
+              unfolding u_i_def 
+              using bounded eq_lu
+              by auto
+            then show ?thesis
+              by (simp add: Le)
+          next
+            case (Lt x2)
+            hence "- u_i j < x2"
+              unfolding u_i_def 
+              using bounded eq_lu
+              by auto
+            then show ?thesis
+              by (simp add: Lt)
+          next
+            case INF
+            then show ?thesis using lu_not_inf eq_lu
+              by argo
+          qed
+          hence "0 \<le> D 0 j + Le (u_i j)"
+            by (smt Le_cancel_1 add_mono_thms_linordered_semiring(1) neutral order_mono_setup.refl)
+          thus "False" using assm_c A
+            by force
+        qed
+        hence "lu_apx l D 0 j = Lt (- U l (v' j))"
+          using Lemma9[of Z D "j" "l"] vabs assms
+          by auto
+        hence "dbm_entry_val u None (Some (v' j)) (Lt (- U l (v' j)))"
+          using bounded
+          by argo
+        hence "- u (v' j) < - U l (v' j)" 
+          by fast
+        hence "- u (v' j) < - U' j"
+          using U'_def by auto
+        hence "u_i j > U' j"
+          unfolding u_i_def
+          by auto
+        then show ?thesis using middle
+          by linarith
+      next
+        case 2
+        hence A:"abs_dbm D j 0 = D j 0 \<and> abs_dbm D 0 j = Lt (- L' j)"
+          using b1 b2 less_eq
+          by (metis dbm_le_def not_both_bigger_D not_both_smaller_D)
+        
+        have lt_zero:"D j 0 + Lt (- L' j) < 0"
+          by (metis ab_semigroup_add_class.add.commute assm_c A)
+        hence neq_inf:"D j 0 \<noteq> DBM.INF"
+          by force
+        hence "D j 0 \<le> Le (L' j)" using lt_zero
+          by(cases "D j 0";auto simp: add neutral)
+        hence "\<not> Le (L l (v' j)) \<prec> (D j 0)"
+            unfolding L'_def using assms(2)
+            by (simp add: DBM.less_eq)
+        hence is_lu:"lu_apx l D j 0 = D j 0" 
+            using assms vabs u_apx helper_10i[of "u" "l" "D" "j" "Z"]
+            by fast
+          hence bounded:"dbm_entry_val u (Some (v' j)) None (D j 0)"
+         using u_apx is_lu
+         unfolding DBM_zone_repr_def DBM_val_bounded_def u_i_def
+         using assms
+         using clock_numbering(2) v_v'
+         by fastforce
+        show ?thesis
+        proof(cases "D j 0")
+          case (Le x1)
+         hence  "u (v' j) \<le> x1" using Le bounded
+           by fastforce
+         hence "u_i j \<le> x1" unfolding u_i_def
+           by blast
+         hence " Le (u_i j) \<le> D j 0" using Le
+           by simp
+         hence is_u:"Le (u_i j) = D j 0" using 2
+           by fastforce
+         have "u_i j - L' j > 0"
+           by (simp add: L_lt_u)
+         hence "Lt (u_i j - L' j) > 0"
+           using "2" \<open>Le (u_i j) \<le> D j 0\<close> not_both_smaller_D by blast
+         have "D j 0 + Lt (- L' j) > 0" 
+           using is_u "2" not_both_smaller_D by auto
+         then show ?thesis using lt_zero
+           by force
+        next
+          case (Lt x2)
+          hence  "u (v' j) < x2" using Lt bounded
+           by fastforce
+         hence "u_i j < x2" unfolding u_i_def
+           by blast
+         hence " Le (u_i j) <  D j 0" using Lt
+           by simp
+         then show ?thesis using 2
+           by fastforce
+        next
+          case INF
+          then show ?thesis using lt_zero by force
+        qed
+      qed
+  next
+    case bigger_U
+    hence rhs: "abs_dbm D j 0 = D j 0"
+      unfolding abs_dbm_def abs_row_def by auto
+    have lt_D00:"D 0 0 \<le> D 0 j + D j 0" using D_canonical assms
+      by blast
+    have "0 \<le> D 0 0" 
+          using D_canonical_dbm D_zone_repr_non_empty_alt 
+                D_cycle_free cycle_free_0_0 
+          by blast
+    hence path_ge_zero:"0 \<le> D 0 j + D j 0" using lt_D00
+      by simp
+    have "D 0 j \<le> Le 0" 
+       using D_canonical_dbm neutral assms
+       unfolding canonical_dbm_def dbm_nonneg_def
+       by metis
+    hence dj0_gt_zero:"D j 0 \<ge> 0"
+      using path_ge_zero
+      by (metis add_nonpos_neg linorder_not_less neutral)
+    have lhs_not_id: "abs_dbm D 0 j \<noteq> D 0 j"
+    proof(rule ccontr)
+        assume "\<not>(abs_dbm D 0 j \<noteq> D 0 j)"
+        hence "D 0 j + D j 0 < 0" 
+          using assm_c rhs
+          by argo
+        thus "False" using path_ge_zero
+          by force
+      qed
+    consider (between) "(U' j < u_i j \<and> u_i j \<le> L' j)" |
+              (bigger) "(U' j < u_i j \<and> u_i j > L' j)" 
+      using not_min bigger_U by linarith
+    then show ?thesis
+    proof(cases)
+      case between
+      hence "abs_dbm D 0 j = dmin (Le (- u_i j)) (D 0 j)"
+        unfolding abs_dbm_def abs_col_def using assms 
+        by auto
+      hence lhs:"abs_dbm D 0 j = Le (- u_i j)"
+        using lhs_not_id
+        by argo
+      hence "Le (- u_i j) + D j 0 < 0" 
+        using rhs assm_c
+        by argo
+      hence dj0_lt_u_i:"D j 0 < Le (u_i j)"
+        by(cases "D j 0"; auto simp: add dbm_lt.simps neutral)+
+      hence not_lt_Dj0:"\<not> Le (u_i j) \<le> D j 0"
+        by auto
+      have A:"Le (u_i j) \<le>  Le (L' j)" using between
+        by blast
+      hence dj0_lt_L:"D j 0 < Le (L' j)" using dj0_lt_u_i 
+        by (smt antisym_conv min.bounded_iff min_simps(2) not_le_imp_less)
+         
+      have u_not_bound_Dj0:"\<not> (dbm_entry_val u (Some (v' j)) None (D j 0))"
+        proof(rule notI)
+        assume bounded:"dbm_entry_val u (Some (v' j)) None (D j 0)"
+        show "False"
+        proof(cases "D j 0")
+          case (Le x1)
+          hence "u (v' j) \<le> x1" using bounded
+            by fastforce
+          hence "u_i j \<le> x1" unfolding u_i_def by argo
+          hence "Le (u_i j) \<le> D j 0" using Le
+            by auto
+          then show ?thesis using not_lt_Dj0
+            by argo
+        next
+          case (Lt x2)
+          hence "u (v' j) < x2" using bounded
+            by fastforce
+          hence "u_i j < x2" unfolding u_i_def by argo
+          hence "Le (u_i j) \<le> D j 0" using Lt
+            by auto
+          then show ?thesis using not_lt_Dj0
+            by argo
+        next
+          case INF
+          then show ?thesis
+            using not_lt_Dj0 by auto
+        qed
+      qed
+      have "\<not> (lu_apx l D j 0 \<le> D j 0)"
+      proof(rule notI)
+        assume "lu_apx l D j 0 \<le> D j 0"
+        hence "dbm_le (lu_apx l D j 0) (D j 0)" by (simp add: less_eq)
+        hence "dbm_entry_val u (Some (v' j)) None (D j 0)"
+          using dbm_entry_val_mono_3 u_dbm_entry_val(2)[of j] assms
+          by fast
+        thus "False" using u_not_bound_Dj0
+          by argo
+      qed
+      hence lu_gt_id:"lu_apx l D j 0 > D j 0"
+        by simp
+      have upper_eq_Dj0:"norm_upper (D j 0) (L' j) = D j 0"
+        using dj0_lt_L
+        by (metis less linordered_monoid.less_imp_not_less norm_upper.simps)
+      have base:"lu_apx l D j 0 = norm_lower (norm_upper (D j 0) (L' j)) 0" 
+        unfolding lu_apx_def extra_lu_def L'_def
+        using assms
+        by auto
+      hence "lu_apx l D j 0 = norm_lower (D j 0) 0"
+        using upper_eq_Dj0 by argo
+      hence "lu_apx l D j 0 = Lt 0"
+        using lu_gt_id
+        by fastforce
+      hence "u (v' j) < 0" using u_dbm_entry_val[of j] assms
+        by force
+      hence u_lt_0:"u_i j < 0" unfolding u_i_def
+        by argo
+      have "U' j \<ge> 0" unfolding U'_def
+        by simp
+      thus ?thesis using between u_lt_0
+        by linarith
+    next
+      case bigger
+      hence "abs_dbm D 0 j = Lt (- L' j)"
+        using abs_col_def abs_dbm_def lhs_not_id by auto
+      hence lt_0:"D j 0 + Lt (- L' j) < 0" 
+        using rhs assm_c
+        by (simp add: ab_semigroup_add_class.add.commute)
+      hence dj0_le_L:"dbm_entry_bound (D j 0) \<le> L' j" 
+        proof(cases "D j 0")
+          case (Le x1)
+          hence "D j 0 + Lt (- L' j) = Lt (x1 - L' j)" 
+            by (simp add: add)
+          hence "Lt (x1 - L' j) < Le 0" 
+            using lt_0 neutral
+            by metis
+          hence "x1 - L' j \<le> 0" try0
+            by force
+          hence "x1 \<le> L' j" try0
+            by simp
+          then show ?thesis using Le
+            by fastforce
+          next
+            case (Lt x2)
+            hence "D j 0 + Lt (- L' j) = Lt (x2 - L' j)" 
+            by (simp add: add)
+          hence "Lt (x2 - L' j) < Le 0" 
+            using lt_0 neutral
+            by metis
+          hence "x2 - L' j \<le> 0" try0
+            by force
+          hence "x2 \<le> L' j" try0
+            by simp
+          then show ?thesis using Lt
+            by force
+        next
+          case INF
+          then show ?thesis using lt_0
+            by fastforce
+        qed
+        hence upper_id: "norm_upper (D j 0) (L' j) = D j 0"
+          by(cases "D j 0"; auto)
+        have "Le 0 > Lt 0"
+          by simp
+        hence "D j 0 > Lt 0"
+          using dj0_gt_zero neutral
+          by (smt DBM.less_eq dbm_le_def less linordered_monoid.dual_order.strict_trans)
+        hence "\<not> D j 0 \<prec> Lt 0"
+          by (simp add: less)
+        hence lower_id:"norm_lower (D j 0) 0 = D j 0"
+          by auto
+        hence lower_upper_id: "norm_lower (norm_upper (D j 0) (L' j)) 0 = D j 0"
+          using upper_id
+          by argo
+        have "lu_apx l D j 0 = norm_lower (norm_upper (D j 0) (L' j)) 0"
+          unfolding lu_apx_def extra_lu_def L'_def
+          using assms
+          by fastforce
+        hence "lu_apx l D j 0 = D j 0" 
+          using lower_upper_id
+          by argo
+        hence "dbm_entry_val u (Some (v' j)) None (D j 0)"
+          using u_dbm_entry_val assms
+          by fastforce
+        hence "u (v' j) \<le> dbm_entry_bound (D j 0)"
+          using lt_0
+          by(cases "D j 0";auto)
+        hence "u (v' j) \<le> L' j" using dj0_le_L
+          by linarith
+      then show ?thesis using bigger u_i_def
+        by auto
+    qed
+  qed
+qed
+
+lemma cons_eq_some_append:
+  "ys = [] \<or> (\<exists>a as. ys = as @ [a])"
+  by(induction ys arbitrary: a as; auto)
+
+
+lemma negative_len_shortest_alt:
+  assumes "len m i i xs < 0"
+  shows "\<exists> j ys. distinct (j # ys) \<and> len m j j ys < 0 
+              \<and> j \<in> set (i # xs) \<and> set ys \<subseteq> set xs"
+  using negative_len_shortest[of xs "length xs"] assms by blast
+
+
+lemma disjE_reuse_fst:
+  assumes "(P \<or> Q)"
+  and "P \<Longrightarrow> R"
+  and "Q \<Longrightarrow> P \<or> R"
+shows "R"
+  using assms by argo
+
+
+lemma cycle_abs:
+  assumes "\<lbrakk>abs_dbm D\<rbrakk> = {}"
+  shows "\<exists> i j. i \<in> {1..n} \<and> j \<in> {1..n} \<and> abs_dbm D 0 i + D i j + abs_dbm D j 0 < 0"
+proof -
+  text \<open>First we obtain a distinct shortest path which is less than 0\<close>
+  obtain i xs where
+    *:"set xs \<subseteq> {0..n}"
+    "i \<le> n"
+    "len (abs_dbm D) i i xs < 0"
+    using assms abs_dbm_not_cyc_free
+    by force
+    hence "\<exists> j ys. distinct (j # ys) \<and> len (abs_dbm D) j j ys < 0 \<and> j \<in> set (i # xs) \<and> set ys \<subseteq> set xs"
+      using negative_len_shortest_alt[of "abs_dbm D" i xs]
+      by blast
+    from this obtain j ys where 
+      j_ys:"distinct (j # ys)"
+      "len (abs_dbm D) j j ys < 0"
+      "j \<in> set (i#xs)"
+      "set ys \<subseteq> set xs"
+      by blast
+    have len_abs_lt_zero: "len (abs_dbm D) j j ys < 0"
+      using j_ys
+      by argo
+    have ys_le_n: "set ys \<subseteq> {0..n}" using j_ys(4) *(1)
+      by fast
+    text\<open>The path must contain at least two points between j
+        We first show it must contain atleast one point:\<close>
+    have ys_non_empty:"\<exists> k ks. ys = k#ks"
+    proof(rule ccontr)
+      assume "\<not> (\<exists> k ks. ys = k#ks)"
+      hence "ys = []"
+        using list_encode.elims by blast
+      hence "abs_dbm D j j < 0" 
+          using j_ys
+          by force
+      hence **:"D j j < 0"
+          unfolding abs_dbm_def using j_ys
+          by presburger
+      have "j \<le> n" using j_ys *
+      by force
+      hence "D j j \<ge> 0" 
+        by (simp add: D_cyc_free clock_numbering_alt cyc_free_not_empty dbm_non_empty_diag)
+      thus "False" using **
+          by simp
+      qed
+    obtain k ks where
+      k_ks:"ys = k#ks" using ys_non_empty
+      by blast
+    hence ks_len: "len (abs_dbm D) j j ys = abs_dbm D j k + len (abs_dbm D) k j ks"
+      by simp
+    have zero_in_path:"j = 0 \<or> 0 \<in> set ys"
+    proof(rule ccontr)
+      assume "\<not>(j = 0 \<or> 0 \<in> set ys )"
+      hence "j > 0 \<and> 0 \<notin> set ys"
+        by fast
+      hence \<box>:"j \<in> {1..n} \<and> 0 \<notin> set ys"
+        using * j_ys by auto
+      hence "j \<in> {1..n} \<and> set ys \<subseteq> {1..n}"
+        using "*"(1) j_ys(4) nat_geq_1_eq_neqz by fastforce
+      hence "len (abs_dbm D) j j ys = len D j j ys"
+        using abs_dbm_nearly_cyc_free[of ys j j]
+        by blast
+      hence "len (abs_dbm D) j j ys \<ge> 0"
+        using D_cyc_free
+        using "*"(1) \<box> j_ys(4) by auto
+      thus "False" using j_ys
+        by auto
+    qed
+    hence "(j = 0 \<and> set ys \<subseteq> {1..n}) \<or> (0 \<noteq> j \<and> 0 \<in> set ys)"
+      using j_ys(1) distinct.simps using nat_not_ge_1D
+    proof(cases "j = 0")
+      case True
+      hence "0 \<notin> set ys" using distinct.simps j_ys(1)
+        by fast
+      hence "\<forall>x \<in> set ys. x > 0" using ys_le_n
+        by blast
+      then show ?thesis using True ys_le_n
+        by force    
+    next
+      case False
+      then show ?thesis using zero_in_path
+        by argo
+    qed
+    then consider 
+      (j_zero) "j = 0 \<and> set ys \<subseteq> {1..n}" |
+      (ys_zero) "j \<noteq> 0 \<and> 0 \<in> set ys"
+      by argo
+    thus ?thesis
+    proof(cases)
+      case j_zero
+      hence "len (abs_dbm D) 0 0 ys < 0" using j_ys(2)
+        by blast
+      hence \<box>:"abs_dbm D 0 k + len (abs_dbm D) k 0 ks < 0"
+        using k_ks
+        by fastforce
+      then show ?thesis
+      proof(cases ks)
+        text \<open>The Nil Case proofs that ys contains at least two points\<close>
+        case Nil
+        hence contr:"abs_dbm D 0 k + abs_dbm D k 0 < 0"
+          using \<box>
+          by force
+        have "abs_dbm D 0 k + abs_dbm D k 0 \<ge> 0" 
+          using k_ks j_zero abs_dbm_same_clock[of k]
+          by fastforce
+        then show ?thesis using contr
+          by auto
+      next
+        case (Cons a as)
+        hence "\<exists> q qs. ks = qs @ [q]" using cons_eq_some_append
+          by blast
+        from this obtain q qs where
+          q_qs:"ks = qs @ [q]"
+          by blast
+        hence len_ge:"len (abs_dbm D) k q qs \<ge> D k q" 
+          using j_zero k_ks abs_dbm_len_ge_entry[of qs k q]
+          by force
+        have len_ys:"len (abs_dbm D) 0 0 ys = abs_dbm D 0 k + len (abs_dbm D) k 0 ks"
+          using ks_len j_zero
+          by fastforce
+        have "len (abs_dbm D) k 0 ks = len (abs_dbm D) k q qs + abs_dbm D q 0"
+          using q_qs len_comp[of "abs_dbm D" k 0 qs q Nil]
+          by fastforce
+        hence "len (abs_dbm D) 0 0 ys = abs_dbm D 0 k + len (abs_dbm D) k q qs + abs_dbm D q 0"
+          using len_ys
+          by (simp add: add.assoc)
+        hence "len (abs_dbm D) 0 0 ys \<ge> abs_dbm D 0 k + D k q + abs_dbm D q 0"
+          using len_ge
+          by (simp add: add_left_mono add_right_mono)
+        then show ?thesis 
+          using j_ys(2) j_zero k_ks q_qs by fastforce
+      qed
+    next
+      case ys_zero
+      hence "\<exists>as bs. ys = as @ 0#bs"
+        by (meson in_set_list_format)
+      from this obtain "as" "bs" 
+        where as_bs:"ys = as @0#bs"
+              "(\<forall>x \<in> set as. x > 0) \<and> (\<forall>x \<in> set bs. x > 0)"
+              "set as \<subseteq> set ys \<and> set bs \<subseteq> set ys"
+        using j_ys(1) k_ks
+        by fastforce
+      hence set_as_bs:"set as \<subseteq> {1..n} \<and> set bs \<subseteq> {1..n}" 
+        using ys_le_n
+        by force
+      hence "len (abs_dbm D) j j ys = len (abs_dbm D) j 0 as + len (abs_dbm D) 0 j bs"
+        using len_comp as_bs(1)
+        by fast
+      hence len_ys: "len (abs_dbm D) j j ys = len (abs_dbm D) 0 j bs + len (abs_dbm D) j 0 as"
+        by (simp add: add.commute add.assoc)
+      text\<open> either as or bs need to be non empty\<close>
+      have j_le_n: "j \<le> n"
+        using "*"(1) "*"(2) j_ys(3) ys_zero by auto
+      hence j_in_1_n:"j \<in> {1..n}" using ys_zero
+        by force
+
+      
+      have "\<not> (as = [] \<and> bs = [])"
+      proof(rule notI)
+        assume "as = [] \<and> bs = []"
+        hence contr:" abs_dbm D 0 j + abs_dbm D j 0 < 0"
+          using len_ys j_ys(2)
+          by force
+        have "abs_dbm D 0 j + abs_dbm D j 0 \<ge> 0"
+          using j_le_n ys_zero
+              abs_dbm_same_clock[of j]
+          by fast
+        thus "False" using contr
+          by fastforce
+      qed
+      hence "(\<exists>l ls . as = ls@[l]) \<or> (\<exists>m ms. bs = m#ms) "
+        using cons_eq_some_append[of as]
+        by (meson list_encode.elims)
+
+    then show ?thesis
+    proof(rule disjE_reuse_fst[of "\<exists>l ls . as = ls@[l]" "\<exists>m ms. bs = m#ms"])    
+      assume "\<exists>l ls . as = ls@[l]"
+      from this obtain l ls where
+        lhs: "as = ls @ [l]"
+        by blast
+      hence l_ls_le_n:"l \<in> {1..n} \<and> set ls \<subseteq> {1..n}"
+        using set_as_bs
+        by simp
+      have "len (abs_dbm D) j 0 as = len (abs_dbm D) j l ls + abs_dbm D l 0"
+        using lhs len_comp[ of "abs_dbm D" j 0 ls l Nil]
+        by auto
+      hence len_as:"len (abs_dbm D) j 0 as \<ge> D j l + abs_dbm D l 0"
+        using j_in_1_n l_ls_le_n abs_dbm_len_ge_entry[of ls j l]
+          add_mono_left
+        by auto
+      show ?thesis
+      proof(cases bs)
+        case Nil
+        hence "len (abs_dbm D) 0 j bs = abs_dbm D 0 j"
+          by auto
+        hence "len (abs_dbm D) j j ys \<ge> abs_dbm D 0 j + D j l + abs_dbm D l 0 "
+          using len_as len_ys
+          by (simp add: add_mono_right add.assoc)
+        hence "abs_dbm D 0 j + D j l + abs_dbm D l 0 < 0" using j_ys(2)
+          by force
+        then show ?thesis using j_in_1_n l_ls_le_n
+          by blast
+      next
+        case (Cons m ms)
+        hence m_ms_le_n:"m \<in> {1..n} \<and> set ms \<subseteq> {1..n}" using set_as_bs
+          by simp
+        hence ms_len:"len (abs_dbm D) m j ms \<ge> D m j" 
+          using abs_dbm_len_ge_entry[of ms m j] j_in_1_n
+          by argo
+        have sp:"D m j + D j l \<ge> D m l" using D_canonical m_ms_le_n l_ls_le_n
+          j_le_n
+          by auto
+        have "len (abs_dbm D) 0 j bs = abs_dbm D 0 m + len (abs_dbm D) m j ms"
+          using Cons by force
+        hence "len (abs_dbm D) 0 j bs \<ge> abs_dbm D 0 m + D m j"
+          using ms_len add_mono_right
+          by auto
+        hence "len (abs_dbm D) j j ys \<ge> abs_dbm D 0 m + D m j + D j l + abs_dbm D l 0"
+          using len_as 
+                add_mono[of "abs_dbm D 0 m + D m j" "len (abs_dbm D) 0 j bs"
+                            "D j l + abs_dbm D l 0" "len (abs_dbm D) j 0 as"
+                        ]
+              len_ys
+          by (simp add: add.assoc)
+        hence "len (abs_dbm D) j j ys \<ge> abs_dbm D 0 m + D m l + abs_dbm D l 0"
+          using sp
+          by (smt DBM.less_eq ab_semigroup_add_class.add.commute add.assoc add_left_mono linordered_monoid.dual_order.trans)
+        hence "abs_dbm D 0 m + D m l + abs_dbm D l 0 < 0" using j_ys(2)
+          by auto
+        then show ?thesis using j_in_1_n m_ms_le_n l_ls_le_n by blast
+      qed
+    next
+      let ?thesis = 
+        "(\<exists>l ls. as = ls @ [l]) \<or> 
+         (\<exists>i j. i \<in> {1..n} \<and> j \<in> {1..n} 
+            \<and> abs_dbm D 0 i + D i j + abs_dbm D j 0 < 0)"
+      assume "\<exists>m ms. bs = m#ms"
+      from this obtain m ms where
+        rhs:"bs = m#ms"
+        by blast
+      hence m_ms_le_n:"m \<in> {1..n} \<and> set ms \<subseteq> {1..n}" using set_as_bs
+        by force
+      have ms_len:"len (abs_dbm D) m j ms \<ge> D m j"
+        using abs_dbm_len_ge_entry[of ms m j] j_in_1_n m_ms_le_n
+        by fast
+      have "len (abs_dbm D) 0 j bs = abs_dbm D 0 m + len (abs_dbm D) m j ms"
+        using rhs
+        by force
+      hence len_bs:"len (abs_dbm D) 0 j bs  \<ge> abs_dbm D 0 m + D m j"
+        using ms_len add_mono_right
+        by auto
+      show ?thesis
+      proof(cases as)
+        case Nil
+        hence "len (abs_dbm D) j 0 as = abs_dbm D j 0"
+          by simp
+        hence "len (abs_dbm D) j j ys \<ge> abs_dbm D 0 m + D m j + abs_dbm D j 0"
+          using len_bs len_ys
+          by (simp add: add_right_mono)
+        hence "abs_dbm D 0 m + D m j + abs_dbm D j 0 < 0" 
+          using j_ys(2)
+          by simp
+        then show ?thesis using m_ms_le_n j_in_1_n
+          by blast
+      next
+        case (Cons a list)
+        hence "\<exists>ls l. as = ls @ [l]" 
+          using cons_eq_some_append[of as]
+          by fast
+        then show ?thesis
+          by blast
+      qed
+    qed
+  qed
+qed
+
 lemma abs_dbm_zone_non_empty:
-  "\<lbrakk>abs_dbm D\<rbrakk> \<noteq> {}"
-  sorry
+  assumes "\<lbrakk>abs_dbm D\<rbrakk> = {}"
+  shows "False"
+proof -
+  obtain i j where
+    i_j: "i \<in> {1..n} \<and> j \<in> {1..n}"
+    "abs_dbm D 0 i + D i j + abs_dbm D j 0 < 0"
+    using cycle_abs assms
+    by blast
+  show "False" sorry
+qed
 
 text\<open>Showing that the zone abstraction of abs_dbm is not empty\<close>
 
@@ -797,15 +1690,16 @@ text\<open>What is left is to show that \<lbrakk>abs_dbm D\<rbrakk> \<noteq> {}
     TODO: How does the assumption of the Paper follow?\<close>
 
 lemma P_u_non_empty:
-  "P_u \<noteq> {}"
+  assumes "Z \<noteq> {}"
+  shows "P_u \<noteq> {}"
   using abs_dbm_repr_P_u abs_dbm_zone_non_empty
   by blast
 end
 
 
-
 lemma Theorem_Bouyer: 
   assumes "vabstr' Z M"
+  and "Z \<noteq> {}"
   shows 
     "\<lbrakk>lu_apx l M\<rbrakk> \<subseteq> local.abs l Z"
 proof
@@ -818,6 +1712,21 @@ proof
   thus "u \<in> abs l Z" using abs_def by blast
 qed
 
+lemma lu_apx_\<alpha>:
+  assumes "vabstr' Z M"
+  shows "\<lbrakk>lu_apx l M\<rbrakk> \<subseteq> local.abs l Z"
+proof(cases "Z = {}")
+  case True
+  hence "\<lbrakk>lu_apx l M\<rbrakk> = {}" using assms case_zone_repr_empty
+    by presburger
+  then show ?thesis
+    by blast
+next
+  case False
+  then show ?thesis using assms Theorem_Bouyer
+    by blast
+qed
+
 interpretation extra: TA_Extrapolation where
   A = A and
   extra = "lu_apx" and
@@ -825,10 +1734,10 @@ interpretation extra: TA_Extrapolation where
   apply standard
   subgoal \<comment> \<open>Only non-negative clock valuations are simulated\<close>
     unfolding V_def unfolding X_is_clk_set by (auto simp: img_fst sim_nonneg)
-  subgoal for Z M l \<comment> \<open>@{term extra_lu} extrapolates\<close>
+  subgoal for Z M l \<comment> \<open>@{ extra_lu} extrapolates\<close>
     using clock_numbering(1) unfolding lu_apx_def by (auto intro: extra_lu_mono)
   subgoal for Z M l \<comment> \<open>The key property\<close>
-    using Theorem_Bouyer by simp
+    using lu_apx_\<alpha> by simp
   subgoal \<comment> \<open>Finite Extrapolation\<close>
     using extra_lu_finite \<comment> \<open>XXX: Does not quite fit yet\<close>
     sorry
