@@ -1921,15 +1921,13 @@ proof -
         by simp
     next
       assume min_cond:"u_i i \<le> min (L' i) (U' i)"
-      hence "dbm_le (Le (u(v' i))) (D i 0)" 
-        using u_apx i_j_le_n i_j(1)
-        unfolding u_i_def L'_def U'_def
-          using Lemma10_i vabs
-          by auto
-      hence "Le (u(v' i)) \<le> D i 0" 
+      hence "dbm_le (Le (u_i i)) (D i 0)" 
+        using  i_j(1)
+        unfolding u_i_def
+          using Lemma10_i[of i]
+          by (simp add: u_i_def)
+      hence *:"Le (u_i i) \<le> D i 0" 
         by (simp add: less_eq)
-      hence *:"Le (u_i i) \<le> D i 0" unfolding u_i_def
-        by presburger
       show "\<not> (Le (- u_i i) + D i j + u_dbm D j 0 < 0)"
       proof(rule notI)
         assume "Le (- u_i i) + D i j + u_dbm D j 0 < 0"
