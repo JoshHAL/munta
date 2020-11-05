@@ -1834,18 +1834,19 @@ assumes "j \<in> {1..n}"
   and "u_i j \<le> L' j \<Longrightarrow> P (Le (- u_i j))"
   and "L' j < u_i j \<Longrightarrow> P (Lt (- L' j))"
 shows "P (u_dbm D 0 j)"
-proof(rule u_dbm_0j_rule[of j])
-  show "j \<in>{1..n}" using assms
+proof(rule u_dbm_0j_rule[of j], goal_cases)
+  case 1
+  show ?case using assms
     by argo
 next
-  assume "u_i j \<le> min (L' j) (U' j)"
+  case 2
   hence "u_i j \<le> L' j"
     by force
-  thus "P (Le (- u_i j))" using assms(3)
+  thus ?case using assms(3)
     by blast
 next
-  assume A:"U' j < u_i j \<and> u_i j \<le> L' j"
-  show "P (min (Le (- u_i j)) (D 0 j))"
+  case 3
+  show ?case
   proof(cases "min (Le (- u_i j)) (D 0 j) = D 0 j")
     case True
     then show ?thesis using assms(2)
@@ -1854,12 +1855,12 @@ next
     case False
     hence "min (Le (- u_i j)) (D 0 j) = Le (- u_i j)"
       by fastforce
-    then show ?thesis using assms(3) A 
+    then show ?thesis using assms(3) 3
       by presburger
   qed
 next
-  assume A:"L' j < u_i j"
-  show "P (min (D 0 j) (Lt (- L' j)))"
+  case 4
+  show ?case
   proof(cases "min (D 0 j)(Lt (- L' j)) = D 0 j")
     case True
     then show ?thesis using assms(2)
@@ -1868,7 +1869,7 @@ next
     case False
     hence "min (D 0 j) (Lt (- L' j))  = Lt (- L' j)"
       by fastforce
-    then show ?thesis using assms(4) A 
+    then show ?thesis using assms(4) 4
       by argo
   qed
 qed
@@ -1879,6 +1880,8 @@ lemma u_dbm_j0:
   shows "u_dbm D j 0 = D j 0 \<or> (u_dbm D j 0 = Le ( u_i j) \<and> u_i j \<le> U' j)" 
   using assms
   by(rule u_dbm_dj0_rule[of j]; auto)
+
+
 
 lemma u_dbm_E_1:
 assumes "j \<in> {1..n}"
@@ -1916,11 +1919,12 @@ proof -
       using i_j add_mono_right[of "D i 0" "D i j + u_dbm D j 0" "u_dbm D 0 i"]
       by (simp add: add.assoc)
     show ?thesis
-    proof(rule u_dbm_0j_rule[of i])
-      show "i \<in> {1..n}" using i_j(1)
+    proof(rule u_dbm_0j_rule[of i], goal_cases)
+      case 1
+      show ?case using i_j(1)
         by simp
     next
-      assume min_cond:"u_i i \<le> min (L' i) (U' i)"
+      case 2
       hence "dbm_le (Le (u_i i)) (D i 0)" 
         using  i_j(1)
         unfolding u_i_def
@@ -1928,20 +1932,20 @@ proof -
           by (simp add: u_i_def)
       hence *:"Le (u_i i) \<le> D i 0" 
         by (simp add: less_eq)
-      show "\<not> (Le (- u_i i) + D i j + u_dbm D j 0 < 0)"
+      show ?case
       proof(rule notI)
         assume "Le (- u_i i) + D i j + u_dbm D j 0 < 0"
         hence "Le (- u_i i) + D i 0 < 0" 
           using Di0_lt add_mono_right
-          using D0i_lt_0 min_cond u_dbm_E_1 i_j(1) by auto
+          using D0i_lt_0 2 u_dbm_E_1 i_j(1) by auto
         hence "D i 0 < Le (u_i i)"
           using Le_cancel_1[of "u_i i"] add_left_mono neutral
           by (metis Le_cancel_2 linorder_not_less)
         thus "False" using * by fastforce
       qed
     next
-      assume between:"U' i < u_i i \<and> u_i i \<le> L' i"
-      show "\<not> (min (Le (- u_i i)) (D 0 i) + D i j + u_dbm D j 0 < 0)"
+      case 3
+      show ?case
       proof(rule notI)
         assume assm:"min (Le (- u_i i)) (D 0 i) + D i j + u_dbm D j 0 < 0"
         hence min_lt_z:"min (Le (- u_i i)) (D 0 i) + D i 0 < 0" 
@@ -1953,12 +1957,12 @@ proof -
         hence "Le (- u_i i) + D i 0 < 0"
           using min_lt_z by argo     
         hence "u_i i < U' i" 
-          using between i_j(1) zero_gt_neg_u_i_Di0[of i] by fastforce
-        thus "False" using between by linarith
+          using 3 i_j(1) zero_gt_neg_u_i_Di0[of i] by fastforce
+        thus "False" using 3 by linarith
       qed
     next
-      assume A:"L' i < u_i i"
-      show "\<not> (min (D 0 i) (Lt (- L' i)) + D i j + u_dbm D j 0 < 0)"
+      case 4
+      show ?case
       proof(rule notI)
         assume assm: "min (D 0 i) (Lt (- L' i)) + D i j + u_dbm D j 0 < 0"
         hence min_lt:"min (D 0 i) (Lt (- L' i)) + D i 0 < 0"
@@ -1968,17 +1972,19 @@ proof -
         hence "min (D 0 i) (Lt (- L' i)) = Lt (- L' i)"
           using D_through_zero[of i] i_j_le_n not_less by fastforce
         hence "Lt (- L' i) + D i 0 < 0" using min_lt by argo
-        thus "False" using i_j_le_n zero_lt_i  A zero_gt_u_dbm_L[of i]
+        thus "False" using i_j_le_n zero_lt_i  4 zero_gt_u_dbm_L[of i]
           by blast
       qed
     qed
   next
     case is_u
     show ?thesis
-    proof(rule u_dbm_0j_rule_alt[of i])
-      show "i \<in> {1..n}" using i_j(1) by blast
+    proof(rule u_dbm_0j_rule_alt[of i], goal_cases)
+      case 1
+      show ?case using i_j(1) by blast
     next
-      show "\<not> D 0 i + D i j + u_dbm D j 0 < 0"
+      case 2
+      show ?case
       proof(rule notI)
         assume A:"D 0 i + D i j + u_dbm D j 0 < 0"
         have "D 0 i + D i j \<ge> D 0 j" using i_j(1) D_canonical by auto
@@ -1989,8 +1995,8 @@ proof -
         thus "False" using reuse_Dj0_U_lt_0[of j] is_u i_j(1) by force
       qed
     next
-      assume u_le_LU:"u_i i \<le> (L' i)"
-      show "\<not> Le (- u_i i) + D i j + u_dbm D j 0 < 0"
+      case 3
+      show ?case
       proof(rule notI)
         assume "Le (- u_i i) + D i j + u_dbm D j 0 < 0"
         hence assm:"Le (- u_i i) + D i j + Le (u_i j) < 0" 
@@ -2057,7 +2063,7 @@ proof -
             by linarith
         qed
         hence "dbm_entry_bound (D i j) > u_i i"
-            using u_le_LU
+            using 3
             by force
         hence "u_i j < 0"
             using lt_u
@@ -2066,15 +2072,15 @@ proof -
             by auto
         qed
     next
-      assume L_lt_u_i:"L' i < u_i i"
+      case 4
       hence **:"Lt (- L' i) > Lt (- u_i i)"
         by fastforce
       have "L' i \<ge> 0" 
         unfolding L'_def
         by fastforce
-      hence **:"u_i i > 0" using L_lt_u_i
+      hence **:"u_i i > 0" using 4
         by linarith
-      show "\<not>  Lt (- L' i) + D i j + u_dbm D j 0 < 0"
+      show ?case
       proof(rule notI)
         assume " Lt (- L' i) + D i j + u_dbm D j 0 < 0"
         hence *:"Lt (- L' i) + D i j + Le (u_i j) < 0"
@@ -2139,7 +2145,7 @@ proof -
             using Le
             by (simp add: add)
           hence "Lt (- L' i) + D i j + Le (u_i j) > Lt (- u_i i + x1 + u_i j)"
-            using L_lt_u_i
+            using 4
             by fastforce
           hence "Lt (- L' i) + D i j + Le (u_i j) > Lt 0"
             using b 
@@ -2158,10 +2164,9 @@ proof -
           hence "- u_i i + x2 + u_i j > 0"
             by linarith
           hence "- L' i + x2 + u_i j > 0" 
-            using L_lt_u_i
+            using 4
             by linarith
           hence "Lt ( x2 - L' i + u_i j) \<ge> Le 0"
-
             by simp
           hence "Lt (- L' i) + D i j + Le (u_i j) \<ge> 0"
             using Lt by(simp add: add neutral)
